@@ -218,6 +218,7 @@ def get_poetic_devices():
         return {"poetic_devices": []}
     return {"poetic_devices": scene_reports[-1].get("poetic_devices", [])}
 
+
 @app.post("/analyze-style")
 def analyze_writing_style(request: StyleAnalysisRequest):
     """Analyzes writing style from provided text samples."""
@@ -235,35 +236,34 @@ def analyze_writing_style(request: StyleAnalysisRequest):
     avg_sentence_length = sum(len(re.findall(r'\b\w+\b', s)) for s in sentences) / len(sentences)
     vocabulary_diversity = len(set(words)) / len(words)
     punctuation_freq = dict(Counter(re.findall(r'[.,!?;:"\'-]', text)))  # Convert to dict for JSON
-
+    
     response = {
         "avg_sentence_length": avg_sentence_length,
         "vocabulary_diversity": vocabulary_diversity,
         "punctuation_frequency": punctuation_freq,
         "sentence_count": len(sentences)
     }
+    global writing_style 
+    writing_style = response
 
     return response
 
-@app.post("/generate-scene")  # Fixed the endpoint name to use hyphen
-def generate_scene(request: SceneGenerationRequest):
+@app.get("/generate-scene")  # Fixed the endpoint name to use hyphen
+def generate_scene():
     """Generates a new scene based on narrative direction."""
     print("Generate scene endpoint called")
     try:
-        # Get previous scenes if available
-        previous_context = ""
-        if hasattr(request, 'previous_scenes') and request.previous_scenes:
-            previous_context = " ".join(request.previous_scenes[-2:])
+        previous_context = scene_reports[-1].get("summary", "") if scene_reports else ""
         
-        # Create the prompt for Gemini
         prompt = f"""
         Previous scenes: {previous_context}
-        
-        Narrative direction: {request.narrative_direction}
+        writing_style of author: {writing_style}
+        Narrative direction: {[scene.get("narrative_direction","") for scene in scene_reports]}
         
         Please generate a creative and compelling movie scene based on the narrative direction above.
         The scene should have realistic dialogue, vivid descriptions, and strong emotional content.
         Include both character interactions and environmental details.
+        if none provided return empty string
         """
         
         # Generate the scene using Gemini
