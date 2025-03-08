@@ -18,24 +18,29 @@ try:
 except LookupError:
     nltk.download('punkt')
 
-
-# Load a smaller model for efficiency
-MODEL_NAME = "distilgpt2"
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
-model.eval()
+# Load environment variables
 load_dotenv()
 
+# Load Hugging Face model for efficiency
+MODEL_NAME = "distilgpt2"
+hf_tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+hf_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+hf_model.eval()
+
 # Configure API key
-genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))  # Or your preferred way to store your key.
+api_key = os.environ.get("GOOGLE_API_KEY")
+if not api_key:
+    print("Warning: GOOGLE_API_KEY environment variable is not set")
+else:
+    genai.configure(api_key=api_key)
 
 # Initialize the Gemini model
-model = genai.GenerativeModel('gemini-2.0-flash-lite')
+gemini_model = genai.GenerativeModel('gemini-2.0-flash-lite')
 scene_reports = []
 
 app = FastAPI(
-    title="FastAPI Boilerplate",
-    description="A simple FastAPI boilerplate with CORS support and health check.",
+    title="Script Analysis and Generation API",
+    description="An API for analyzing and generating script content",
     version="2.0.0"
 )
 
@@ -47,19 +52,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Define request models
 class ScriptInput(BaseModel):
     script_text: str
+
 class TextInput(BaseModel):
     script_text: str
+
 class StyleAnalysisRequest(BaseModel):
     excerpts: list[str]
+
 class TextAnalysisRequest(BaseModel):
     text_samples: list[str]
-class SceneGenerationRequest(BaseModel):
-    previous_scenes: list[str]
-    narrative_direction: str
-    max_length: int = 200
 
+class SceneGenerationRequest(BaseModel):
+    narrative_direction: str
+    previous_scenes: list[str] = []  # Optional with default empty list
 
 def analyze_script(script_content):
     """Analyzes the script and ensures JSON formatted output."""
@@ -95,14 +103,22 @@ def analyze_script(script_content):
     JSON Output:
     """
     prompt = prompt.replace("{script_content}", script_content)
-    response = model.generate_content(prompt)
     
-    # Ensure clean JSON output
     try:
-        json_output = json.loads(response.text.strip().strip("```json").strip("```"))
-        return json_output
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Invalid JSON response from AI model.")
+        response = gemini_model.generate_content(prompt)
+        
+        # Ensure clean JSON output
+        try:
+            # Handle both direct JSON responses and responses with markdown code blocks
+            text = response.text.strip()
+            if text.startswith("```json"):
+                text = text.strip("```json").strip("```").strip()
+            json_output = json.loads(text)
+            return json_output
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=500, detail=f"Invalid JSON response from AI model: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating content: {str(e)}")
 
 @app.get("/")
 def root():
@@ -114,6 +130,7 @@ def health_check():
 
 @app.post("/analyze")
 def analyze_script_endpoint(script: ScriptInput):
+    print("Analyze endpoint called")
     if not script.script_text.strip():
         raise HTTPException(status_code=400, detail="Script text cannot be empty.")
     
@@ -124,6 +141,7 @@ def analyze_script_endpoint(script: ScriptInput):
 
 @app.get("/report")
 def get_aggregated_report():
+    print("Report endpoint called")
     if not scene_reports:
         return {"report": "No scenes analyzed yet."}
 
@@ -163,6 +181,7 @@ def reset_report():
 
 @app.get("/stats")
 def get_script_stats():
+    print("Stats endpoint called")
     if not scene_reports:
         return {"stats": {"character_count": 0, "character_names": [], "emotions": {}}}
     
@@ -180,36 +199,42 @@ def get_script_stats():
 
 @app.get("/readability")
 def get_readability_score():
+    print("Readability endpoint called")
     if not scene_reports:
         return {"readability_score": 0}
     return {"readability_score": scene_reports[-1].get("readability_score", 0)}
 
 @app.get("/narrative_direction")
 def get_narrative_direction():
-    if scene_reports[-1] is None:
+    print("Narrative direction endpoint called")
+    if not scene_reports:
         return {"narrative_direction": "No analysis available"}
     return {"narrative_direction": scene_reports[-1].get("narrative_direction", "No analysis available")}
 
 @app.get("/poetic_devices")
 def get_poetic_devices():
+    print("Poetic devices endpoint called")
     if not scene_reports:
-        return {"poetic_devices": {}}
-    return {"poetic_devices": scene_reports[-1].get("poetic_devices", {})}
+        return {"poetic_devices": []}
+    return {"poetic_devices": scene_reports[-1].get("poetic_devices", [])}
 
 @app.post("/analyze-style")
 def analyze_writing_style(request: StyleAnalysisRequest):
     """Analyzes writing style from provided text samples."""
-    text = " ".join(request.text_samples)
-    print(text)
+    print("Analyze style endpoint called")
+    if not request.excerpts:
+        raise HTTPException(status_code=400, detail="No excerpts provided.")
+        
+    text = " ".join(request.excerpts)
     sentences = sent_tokenize(text)
     words = re.findall(r'\b\w+\b', text.lower())
-    print("aa rha")
+    
     if not sentences or not words:
         raise HTTPException(status_code=400, detail="Invalid text input.")
-    print("aa gya")
+    
     avg_sentence_length = sum(len(re.findall(r'\b\w+\b', s)) for s in sentences) / len(sentences)
     vocabulary_diversity = len(set(words)) / len(words)
-    punctuation_freq = Counter(re.findall(r'[.,!?;:"\'-]', text))
+    punctuation_freq = dict(Counter(re.findall(r'[.,!?;:"\'-]', text)))  # Convert to dict for JSON
 
     response = {
         "avg_sentence_length": avg_sentence_length,
@@ -220,17 +245,34 @@ def analyze_writing_style(request: StyleAnalysisRequest):
 
     return response
 
-@app.post("/generate-scene")
+@app.post("/generate-scene")  # Fixed the endpoint name to use hyphen
 def generate_scene(request: SceneGenerationRequest):
-    """Generates a new scene based on writing style and narrative direction."""
-    prompt = f"Previous: {' '.join(request.previous_scenes[-2:]) if request.previous_scenes else ''}\n\nDirection: {request.narrative_direction}\n\nScene:"
-    inputs = tokenizer(prompt, return_tensors="pt")
-    
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs, max_length=request.max_length, temperature=0.7, top_k=50, top_p=0.9
-        )
-    
-    generated_scene = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    return {"generated_scene": generated_scene}
+    """Generates a new scene based on narrative direction."""
+    print("Generate scene endpoint called")
+    try:
+        # Get previous scenes if available
+        previous_context = ""
+        if hasattr(request, 'previous_scenes') and request.previous_scenes:
+            previous_context = " ".join(request.previous_scenes[-2:])
+        
+        # Create the prompt for Gemini
+        prompt = f"""
+        Previous scenes: {previous_context}
+        
+        Narrative direction: {request.narrative_direction}
+        
+        Please generate a creative and compelling movie scene based on the narrative direction above.
+        The scene should have realistic dialogue, vivid descriptions, and strong emotional content.
+        Include both character interactions and environmental details.
+        """
+        
+        # Generate the scene using Gemini
+        response = gemini_model.generate_content(prompt)
+        generated_scene = response.text
+        
+        return {"generated_scene": generated_scene}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Scene generation failed: {str(e)}")
+
+# Note: Your original filename needs to be 'scene_enhancer.py' for this to work
 # uvicorn scene_enhancer:app --host 0.0.0.0 --port 8000
