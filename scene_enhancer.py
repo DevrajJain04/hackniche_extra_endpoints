@@ -38,13 +38,13 @@ def analyze_script(script_content):
     """Analyzes the script and ensures JSON formatted output."""
     prompt = f"""
     Analyze the following scene and strictly return a well-formed JSON object with this structure:
+    // keep the threshold for something to be considered an emotion or a description to be low
     ```json
     {{
         "scene_description": "Detailed description of the scene",
         "sound_effects": ["List of relevant sound effects"],
         "visual_cues": ["List of environmental and visual elements"],
         "characters": [
-        // keep the threshold for something to be considered an emotion or a description to be low
             {{
                 "name": "Character name",
                 "emotion": "Character emotions",
