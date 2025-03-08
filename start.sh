@@ -8,4 +8,4 @@ AutoTokenizer.from_pretrained('distilgpt2');
 AutoModelForCausalLM.from_pretrained('distilgpt2');
 print('Model downloaded successfully.')
 "
-uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn scene_enhancer:app --host 0.0.0.0 --port 8000

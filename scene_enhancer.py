@@ -71,7 +71,7 @@ def analyze_script(script_content):
     """Analyzes the script and ensures JSON formatted output."""
     prompt = f"""
     Analyze the following scene and strictly return a well-formed JSON object with this structure:
-    // keep the threshold for something to be considered an emotion or a description to be low
+    // keep the threshold for something to be considered an emotion or a description to be low, keep the summary concise and focus on plot points in the scene
     ```json
     {{
         "scene_description": "",
@@ -85,7 +85,7 @@ def analyze_script(script_content):
             }}
         ],
         "readability_score": "",
-        "sentiment": "",
+        "summary": "",
         "poetic_devices": [
             {{
                 "device": "",
