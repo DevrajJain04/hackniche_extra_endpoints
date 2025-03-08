@@ -3,3 +3,5 @@ likhaienv/
 script.txt
 sound_suggestor.py
 __pycache__/
+ml-project/
+style_analyze_create.py

@@ -5,6 +5,29 @@ import google.generativeai as genai
 import json
 import os
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import torch
+import nltk
+import re
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from nltk.tokenize import sent_tokenize
+from collections import Counter
+
+# Download NLTK resources if not available
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
+
+# Initialize FastAPI app
+app = FastAPI()
+
+# Load a smaller model for efficiency
+MODEL_NAME = "distilgpt2"
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+model.eval()
 load_dotenv()
 
 # Configure API key
@@ -32,6 +55,16 @@ class ScriptInput(BaseModel):
     script_text: str
 class TextInput(BaseModel):
     script_text: str
+class StyleAnalysisRequest(BaseModel):
+    excerpts: list[str]
+class SceneGenerationRequest(BaseModel):
+    narrative_direction: str
+class TextAnalysisRequest(BaseModel):
+    text_samples: list[str]
+class SceneGenerationRequest(BaseModel):
+    previous_scenes: list[str]
+    narrative_direction: str
+    max_length: int = 200
 
 
 def analyze_script(script_content):
@@ -53,7 +86,12 @@ def analyze_script(script_content):
         ],
         "readability_score": "",
         "sentiment": "",
-        "poetic_devices": {{}},
+        "poetic_devices": [
+            {{
+                "device": "",
+                "example": ""
+            }}
+        ],
         "narrative_direction": ""
     }}
     Ensure the response is always valid JSON, with no additional text or commentary.
@@ -74,8 +112,8 @@ def analyze_script(script_content):
         raise HTTPException(status_code=500, detail="Invalid JSON response from AI model.")
 
 @app.get("/")
-def read_root():
-    return {"message": "Welcome to FastAPI!"}
+def root():
+    return {"message": "Writing Style Analyzer API is running."}
 
 @app.get("/health")
 def health_check():
@@ -165,4 +203,40 @@ def get_poetic_devices():
         return {"poetic_devices": {}}
     return {"poetic_devices": scene_reports[-1].get("poetic_devices", {})}
 
+@app.post("/analyze-style")
+def analyze_writing_style(request: TextAnalysisRequest):
+    """Analyzes writing style from provided text samples."""
+    text = " ".join(request.text_samples)
+    sentences = sent_tokenize(text)
+    words = re.findall(r'\b\w+\b', text.lower())
+    
+    if not sentences or not words:
+        raise HTTPException(status_code=400, detail="Invalid text input.")
+    
+    avg_sentence_length = sum(len(re.findall(r'\b\w+\b', s)) for s in sentences) / len(sentences)
+    vocabulary_diversity = len(set(words)) / len(words)
+    punctuation_freq = Counter(re.findall(r'[.,!?;:"\'-]', text))
+    
+    response = {
+        "avg_sentence_length": avg_sentence_length,
+        "vocabulary_diversity": vocabulary_diversity,
+        "punctuation_frequency": punctuation_freq,
+        "sentence_count": len(sentences)
+    }
+    
+    return response
+
+@app.post("/generate-scene")
+def generate_scene(request: SceneGenerationRequest):
+    """Generates a new scene based on writing style and narrative direction."""
+    prompt = f"Previous: {' '.join(request.previous_scenes[-2:]) if request.previous_scenes else ''}\n\nDirection: {request.narrative_direction}\n\nScene:"
+    inputs = tokenizer(prompt, return_tensors="pt")
+    
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs, max_length=request.max_length, temperature=0.7, top_k=50, top_p=0.9
+        )
+    
+    generated_scene = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return {"generated_scene": generated_scene}
 #uvicorn scene_enhancer:app --reload
