@@ -41,27 +41,21 @@ def analyze_script(script_content):
     // keep the threshold for something to be considered an emotion or a description to be low
     ```json
     {{
-        "scene_description": "Detailed description of the scene",
-        "sound_effects": ["List of relevant sound effects"],
-        "visual_cues": ["List of environmental and visual elements"],
+        "scene_description": "",
+        "sound_effects": [],
+        "visual_cues": [],
         "characters": [
             {{
-                "name": "Character name",
-                "emotion": "Character emotions",
-                "description": (upto 2 sentences at a maximum)
+                "name": "",
+                "emotion": "",
+                "description": ""
             }}
-        ]
-        "readability_score": "Flesch-Kincaid readability score",
-        "sentiment": "Sentiment of the scene",
-        "poetic_devices": {
-            "example_device": {
-                "count": "Number of times used",
-                "examples": ["List of examples"]
-            }
-        },
-        "narrative_direction":[very concise summary of ]
+        ],
+        "readability_score": "",
+        "sentiment": "",
+        "poetic_devices": {{}},
+        "narrative_direction": ""
     }}
-    ```
     Ensure the response is always valid JSON, with no additional text or commentary.
     
     Script:
