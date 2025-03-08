@@ -20,8 +20,6 @@ try:
 except LookupError:
     nltk.download('punkt')
 
-# Initialize FastAPI app
-app = FastAPI()
 
 # Load a smaller model for efficiency
 MODEL_NAME = "distilgpt2"
@@ -69,39 +67,38 @@ class SceneGenerationRequest(BaseModel):
 
 def analyze_script(script_content):
     """Analyzes the script and ensures JSON formatted output."""
-    prompt = f"""
-    Analyze the following scene and strictly return a well-formed JSON object with this structure:
-    // keep the threshold for something to be considered an emotion or a description to be low, keep the summary concise and focus on plot points in the scene
+    prompt = """
+    Analyze the provided movie scene and return the results in the following strict JSON format. Your goal is to summarize key elements that capture the essence of the scene, while keeping the description, plot points, and character emotions concise. Pay attention to the mood, characters' emotions, and key visual and auditory cues. Avoid extra commentary and ensure the JSON is formatted correctly. Here’s the structure you should follow:
+
     ```json
-    {{
+    {
         "scene_description": "",
         "sound_effects": [],
         "visual_cues": [],
         "characters": [
-            {{
+            {
                 "name": "",
                 "emotion": "",
                 "description": ""
-            }}
+            }
         ],
         "readability_score": "",
         "summary": "",
         "poetic_devices": [
-            {{
+            {
                 "device": "",
                 "example": ""
-            }}
+            }
         ],
         "narrative_direction": ""
-    }}
-    Ensure the response is always valid JSON, with no additional text or commentary.
-    
+    }
+
     Script:
     {script_content}
     
     JSON Output:
     """
-    
+    prompt = prompt.replace("{script_content}", script_content)
     response = model.generate_content(prompt)
     
     # Ensure clean JSON output
@@ -199,7 +196,7 @@ def get_narrative_direction():
 
 @app.get("/poetic_devices")
 def get_poetic_devices():
-    if scene_reports[-1] is None:
+    if not scene_reports:
         return {"poetic_devices": {}}
     return {"poetic_devices": scene_reports[-1].get("poetic_devices", {})}
 
@@ -207,12 +204,13 @@ def get_poetic_devices():
 def analyze_writing_style(request: TextAnalysisRequest):
     """Analyzes writing style from provided text samples."""
     text = " ".join(request.text_samples)
+    print(text)
     sentences = sent_tokenize(text)
     words = re.findall(r'\b\w+\b', text.lower())
-    
+    print("aa rha")
     if not sentences or not words:
         raise HTTPException(status_code=400, detail="Invalid text input.")
-    
+    print("aa gya")
     avg_sentence_length = sum(len(re.findall(r'\b\w+\b', s)) for s in sentences) / len(sentences)
     vocabulary_diversity = len(set(words)) / len(words)
     punctuation_freq = Counter(re.findall(r'[.,!?;:"\'-]', text))
