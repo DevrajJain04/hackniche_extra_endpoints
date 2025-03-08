@@ -5,8 +5,6 @@ import google.generativeai as genai
 import json
 import os
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 import torch
 import nltk
 import re
@@ -55,8 +53,6 @@ class TextInput(BaseModel):
     script_text: str
 class StyleAnalysisRequest(BaseModel):
     excerpts: list[str]
-class SceneGenerationRequest(BaseModel):
-    narrative_direction: str
 class TextAnalysisRequest(BaseModel):
     text_samples: list[str]
 class SceneGenerationRequest(BaseModel):
@@ -68,7 +64,7 @@ class SceneGenerationRequest(BaseModel):
 def analyze_script(script_content):
     """Analyzes the script and ensures JSON formatted output."""
     prompt = """
-    Analyze the provided movie scene and return the results in the following strict JSON format. Your goal is to summarize key elements that capture the essence of the scene, while keeping the description, plot points, and character emotions concise. Pay attention to the mood, characters' emotions, and key visual and auditory cues. Avoid extra commentary and ensure the JSON is formatted correctly. Here’s the structure you should follow:
+    Analyze the provided movie scene and return the results in the following strict JSON format. Your goal is to summarize key elements that capture the essence of the scene, while keeping the description, plot points, and character emotions concise. Pay attention to the mood, characters' emotions, and key visual and auditory cues. Avoid extra commentary and ensure the JSON is formatted correctly. Here's the structure you should follow:
 
     ```json
     {
@@ -167,24 +163,24 @@ def reset_report():
 
 @app.get("/stats")
 def get_script_stats():
-    if scene_reports[-1] is None:
+    if not scene_reports:
         return {"stats": {"character_count": 0, "character_names": [], "emotions": {}}}
     
     characters = scene_reports[-1].get("characters", [])
     character_names = [char["name"] for char in characters]
     emotions = {char["name"]: char["emotion"] for char in characters}
-    
+
     stats = {
         "character_count": len(characters),
         "character_names": character_names,
         "emotions": emotions
     }
-    
+
     return {"stats": stats}
 
 @app.get("/readability")
 def get_readability_score():
-    if scene_reports[-1] is None:
+    if not scene_reports:
         return {"readability_score": 0}
     return {"readability_score": scene_reports[-1].get("readability_score", 0)}
 
@@ -201,7 +197,7 @@ def get_poetic_devices():
     return {"poetic_devices": scene_reports[-1].get("poetic_devices", {})}
 
 @app.post("/analyze-style")
-def analyze_writing_style(request: TextAnalysisRequest):
+def analyze_writing_style(request: StyleAnalysisRequest):
     """Analyzes writing style from provided text samples."""
     text = " ".join(request.text_samples)
     print(text)
@@ -214,14 +210,14 @@ def analyze_writing_style(request: TextAnalysisRequest):
     avg_sentence_length = sum(len(re.findall(r'\b\w+\b', s)) for s in sentences) / len(sentences)
     vocabulary_diversity = len(set(words)) / len(words)
     punctuation_freq = Counter(re.findall(r'[.,!?;:"\'-]', text))
-    
+
     response = {
         "avg_sentence_length": avg_sentence_length,
         "vocabulary_diversity": vocabulary_diversity,
         "punctuation_frequency": punctuation_freq,
         "sentence_count": len(sentences)
     }
-    
+
     return response
 
 @app.post("/generate-scene")
@@ -237,4 +233,4 @@ def generate_scene(request: SceneGenerationRequest):
     
     generated_scene = tokenizer.decode(outputs[0], skip_special_tokens=True)
     return {"generated_scene": generated_scene}
-#uvicorn scene_enhancer:app --reload
+# uvicorn scene_enhancer:app --host 0.0.0.0 --port 8000
