@@ -12,6 +12,7 @@ genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))  # Or your preferred w
 
 # Initialize the Gemini model
 model = genai.GenerativeModel('gemini-2.0-flash-lite')
+scene_reports = []
 
 app = FastAPI(
     title="FastAPI Boilerplate",
@@ -32,7 +33,6 @@ class ScriptInput(BaseModel):
 class TextInput(BaseModel):
     script_text: str
 
-cached_analysis = None  # Store the last analyzed script response
 
 def analyze_script(script_content):
     """Analyzes the script and ensures JSON formatted output."""
@@ -83,19 +83,59 @@ def health_check():
 
 @app.post("/analyze")
 def analyze_script_endpoint(script: ScriptInput):
-    global cached_analysis
     if not script.script_text.strip():
         raise HTTPException(status_code=400, detail="Script text cannot be empty.")
     
-    cached_analysis = analyze_script(script.script_text)
-    return {"analysis": cached_analysis}
+    analysis = analyze_script(script.script_text)
+    scene_reports.append(analysis)  # Append new scene analysis
+    
+    return {"analysis": analysis, "scene_count": len(scene_reports)}
+
+@app.get("/report")
+def get_aggregated_report():
+    if not scene_reports:
+        return {"report": "No scenes analyzed yet."}
+
+    # Collect all characters and their attributes from all scenes
+    aggregated_characters = {}
+    narrative_directions = []
+    
+    for scene in scene_reports:
+        # Aggregate characters and their attributes
+        for char in scene.get("characters", []):
+            name = char["name"]
+            if name not in aggregated_characters:
+                aggregated_characters[name] = {"emotions": set(), "descriptions": set()}
+            
+            aggregated_characters[name]["emotions"].add(char["emotion"])
+            aggregated_characters[name]["descriptions"].add(char["description"])
+        
+        # Collect narrative direction history
+        narrative_directions.append(scene.get("narrative_direction", ""))
+
+    # Convert sets to lists for JSON compatibility
+    for name in aggregated_characters:
+        aggregated_characters[name]["emotions"] = list(aggregated_characters[name]["emotions"])
+        aggregated_characters[name]["descriptions"] = list(aggregated_characters[name]["descriptions"])
+
+    return {
+        "total_scenes": len(scene_reports),
+        "characters": aggregated_characters,
+        "narrative_directions": narrative_directions
+    }
+
+@app.delete("/reset")
+def reset_report():
+    global scene_reports
+    scene_reports = []
+    return {"message": "Scene report reset successful."}
 
 @app.get("/stats")
 def get_script_stats():
-    if cached_analysis is None:
+    if scene_reports[-1] is None:
         return {"stats": {"character_count": 0, "character_names": [], "emotions": {}}}
     
-    characters = cached_analysis.get("characters", [])
+    characters = scene_reports[-1].get("characters", [])
     character_names = [char["name"] for char in characters]
     emotions = {char["name"]: char["emotion"] for char in characters}
     
@@ -109,20 +149,20 @@ def get_script_stats():
 
 @app.get("/readability")
 def get_readability_score():
-    if cached_analysis is None:
+    if scene_reports[-1] is None:
         return {"readability_score": 0}
-    return {"readability_score": cached_analysis.get("readability_score", 0)}
+    return {"readability_score": scene_reports[-1].get("readability_score", 0)}
 
 @app.get("/narrative_direction")
 def get_narrative_direction():
-    if cached_analysis is None:
+    if scene_reports[-1] is None:
         return {"narrative_direction": "No analysis available"}
-    return {"narrative_direction": cached_analysis.get("narrative_direction", "No analysis available")}
+    return {"narrative_direction": scene_reports[-1].get("narrative_direction", "No analysis available")}
 
 @app.get("/poetic_devices")
 def get_poetic_devices():
-    if cached_analysis is None:
+    if scene_reports[-1] is None:
         return {"poetic_devices": {}}
-    return {"poetic_devices": cached_analysis.get("poetic_devices", {})}
+    return {"poetic_devices": scene_reports[-1].get("poetic_devices", {})}
 
 #uvicorn scene_enhancer:app --reload
